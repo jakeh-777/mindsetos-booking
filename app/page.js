@@ -190,12 +190,17 @@ export default function BookingApp() {
   };
 
   const isSlotAvailable = (dateStr, timeStr) => {
-    const slotStart = new Date(dateStr + 'T' + timeStr + ':00');
+    // Create slot time in local timezone, then get its UTC timestamp
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hour, minute] = timeStr.split(':').map(Number);
+    const slotStart = new Date(year, month - 1, day, hour, minute, 0);
     const slotEnd = new Date(slotStart.getTime() + 30 * 60000);
+    
     return !busySlots.some(busy => {
       const busyStart = new Date(busy.start);
       const busyEnd = new Date(busy.end);
-      return (slotStart < busyEnd && slotEnd > busyStart);
+      // Compare timestamps (both converted to same reference)
+      return (slotStart.getTime() < busyEnd.getTime() && slotEnd.getTime() > busyStart.getTime());
     });
   };
 
