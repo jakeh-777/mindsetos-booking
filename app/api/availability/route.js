@@ -1,40 +1,53 @@
-import { google } from 'googleapis';
-import { NextResponse } from 'next/server';
+import { google } from "googleapis";
+import { getToken } from "next-auth/jwt";
 
-export async function GET() {
+export async function GET(req) {
   try {
-    console.log("ENV CHECK:", process.env.GOOGLE_CLIENT_EMAIL);
+    const token = await getToken({ req });
 
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/calendar'],
+    if (!token?.accessToken) {
+      return new Response(
+        JSON.stringify({ error: "Not authenticated" }),
+        { status: 401 }
+      );
+    }
+
+    const url = new URL(req.url);
+    const date = url.searchParams.get("date");
+
+    if (!date) {
+      return new Response(
+        JSON.stringify({ error: "Missing date parameter" }),
+        { status: 400 }
+      );
+    }
+
+    const oauth2 = new google.auth.OAuth2();
+    oauth2.setCredentials({
+      access_token: token.accessToken,
     });
 
-    const calendar = google.calendar({ version: 'v3', auth });
+    const calendar = google.calendar({ version: "v3", auth: oauth2 });
 
     const response = await calendar.freebusy.query({
       requestBody: {
-        timeMin: new Date().toISOString(),
-        timeMax: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        items: [{ id: 'jake@themindsetos.com' }],
+        timeMin: `${date}T00:00:00Z`,
+        timeMax: `${date}T23:59:59Z`,
+        items: [{ id: "primary" }],
       },
     });
 
-    const busySlots =
-      response.data.calendars['jake@themindsetos.com'].busy || [];
+    const busy =
+      response.data.calendars?.primary?.busy || [];
 
-    return NextResponse.json(busySlots);
+    return Response.json(busy);
+
   } catch (error) {
-    console.error('Google Calendar Error:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch calendar',
-        details: error?.message,
-      },
+    console.error("Availability error:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to fetch availability" }),
       { status: 500 }
     );
   }
 }
+
