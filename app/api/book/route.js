@@ -1,56 +1,41 @@
-import { google } from "googleapis";
-import { getToken } from "next-auth/jwt";
+import { google } from 'googleapis';
+import { NextResponse } from 'next/server';
 
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const token = await getToken({ req });
+    const body = await request.json();
 
-    if (!token?.accessToken) {
-      return new Response(
-        JSON.stringify({ error: "Not authenticated" }),
-        { status: 401 }
-      );
-    }
-
-    const body = await req.json();
-    const { name, email, notes, startTime, endTime, guests = [] } = body;
-
-    // OAuth2 client
-    const oauth2 = new google.auth.OAuth2();
-    oauth2.setCredentials({
-      access_token: token.accessToken,
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      },
+      scopes: ['https://www.googleapis.com/auth/calendar'],
     });
 
-    const calendar = google.calendar({ version: "v3", auth: oauth2 });
+    const calendar = google.calendar({ version: 'v3', auth });
+    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+    const guests = body.guests || [];
 
-    // Build attendees list
-    const attendees = [
-      { email }, // client
-      ...guests.map((g) => ({ email: g })), // extra guests
-    ];
-
-    // Create event
-    const event = await calendar.events.insert({
-      calendarId: "primary",
-      sendUpdates: "all", // sends email notifications
+    await calendar.events.insert({
+      calendarId: calendarId,
+      sendUpdates: 'all',
       requestBody: {
-        summary: `Session with ${name}`,
-        description: notes || "No notes provided.",
-        start: { dateTime: startTime },
-        end: { dateTime: endTime },
-        attendees,
+        summary: `MindsetOS Session: ${body.name}`,
+        description: `Notes: ${body.notes || 'None'}${guests.length > 0 ? '\nGuests: ' + guests.join(', ') : ''}`,
+        start: { dateTime: body.startTime },
+        end: { dateTime: body.endTime },
+        attendees: [
+          { email: body.email },
+          ...guests.map((g) => ({ email: g }))
+        ],
       },
     });
 
-    return Response.json({
-      success: true,
-      event: event.data,
-    });
+    return NextResponse.json({ success: true });
+
   } catch (error) {
-    console.error("Booking Error:", error);
-    return new Response(JSON.stringify({ error: "Booking failed" }), {
-      status: 500,
-    });
+    console.error('Booking Error:', error);
+    return NextResponse.json({ error: 'Booking failed' }, { status: 500 });
   }
 }
-
