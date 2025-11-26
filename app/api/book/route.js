@@ -15,19 +15,17 @@ export async function POST(request) {
 
     const calendar = google.calendar({ version: 'v3', auth });
 
-    const guests = body.guests || [];
-    
     await calendar.events.insert({
       calendarId: 'jake@themindsetos.com',
       requestBody: {
         summary: `Booking: ${body.name}`,
-        description: `Notes: ${body.notes || 'None'}${guests.length > 0 ? `\nGuests: ${guests.join(', ')}` : ''}`,
+        description: `Notes: ${body.notes}\nGuests: ${body.guests.join(', ')}`,
         start: { dateTime: body.startTime },
         end: { dateTime: body.endTime },
         attendees: [
           { email: body.email },
           { email: 'jake@themindsetos.com' },
-          ...guests.map((g) => ({ email: g }))
+          ...body.guests.map((g) => ({ email: g }))
         ],
       },
     });

@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { 
   ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, 
-  Video, User, Mail, ArrowRight, ShieldCheck, CheckCircle2, Users, Plus, X 
+  Video, User, Mail, ArrowRight, ShieldCheck, CheckCircle2, Users, Plus, X, LogIn, LogOut
 } from 'lucide-react';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -135,19 +136,33 @@ const BookingForm = ({ date, time, onConfirm, onBack, isSubmitting }) => {
 };
 
 export default function BookingApp() {
+  const { data: session, status } = useSession();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [viewState, setViewState] = useState('calendar');
   const [busySlots, setBusySlots] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 
+  // Fetch busy slots when a date is selected
   useEffect(() => {
-    fetch('/api/availability')
-      .then(res => res.json())
-      .then(data => { if (Array.isArray(data)) setBusySlots(data); })
-      .catch(err => console.error("Failed to load availability", err));
-  }, []);
+    if (selectedDate && session) {
+      setIsLoadingSlots(true);
+      const dateStr = formatDateId(selectedDate);
+      fetch('/api/availability?date=' + dateStr)
+        .then(res => res.json())
+        .then(data => { 
+          if (Array.isArray(data)) setBusySlots(data); 
+          else setBusySlots([]);
+        })
+        .catch(err => {
+          console.error("Failed to load availability", err);
+          setBusySlots([]);
+        })
+        .finally(() => setIsLoadingSlots(false));
+    }
+  }, [selectedDate, session]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -164,6 +179,7 @@ export default function BookingApp() {
     if (newDate < new Date().setHours(0,0,0,0)) return;
     setSelectedDate(newDate);
     setSelectedTime(null);
+    setBusySlots([]); // Clear previous slots
     setViewState('calendar');
   };
 
@@ -199,6 +215,35 @@ export default function BookingApp() {
   };
 
   const timeSlots = generateTimeSlots();
+
+  // Show login screen if not authenticated
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CalendarIcon size={32} className="text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">MindsetOS Booking</h2>
+          <p className="text-gray-500 mb-6">Sign in with Google to access your calendar and manage bookings.</p>
+          <button 
+            onClick={() => signIn('google')}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md flex items-center justify-center gap-2">
+            <LogIn size={18} />
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (viewState === 'success') {
     return (
@@ -265,6 +310,12 @@ export default function BookingApp() {
               <ShieldCheck size={16} className="text-green-600"/> 
               <span className="text-xs font-medium text-gray-600">Synced with Google Calendar</span>
             </div>
+            {session && (
+              <button onClick={() => signOut()} 
+                className="mt-4 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                <LogOut size={12} /> Sign out ({session.user?.email})
+              </button>
+            )}
           </div>
         </div>
         <div className="flex-1 p-8 overflow-y-auto">
@@ -306,18 +357,22 @@ export default function BookingApp() {
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">
                     {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                   </h3>
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                    {timeSlots.map(time => {
-                      const isAvailable = isSlotAvailable(formatDateId(selectedDate), time);
-                      return (
-                        <button key={time} disabled={!isAvailable} onClick={() => handleTimeSelect(time)}
-                          className={getTimeButtonClass(isAvailable)}>
-                          {time}
-                          {!isAvailable && <span className="text-[10px] uppercase tracking-wider">(Busy)</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {isLoadingSlots ? (
+                    <div className="text-gray-500 text-sm">Loading availability...</div>
+                  ) : (
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                      {timeSlots.map(time => {
+                        const isAvailable = isSlotAvailable(formatDateId(selectedDate), time);
+                        return (
+                          <button key={time} disabled={!isAvailable} onClick={() => handleTimeSelect(time)}
+                            className={getTimeButtonClass(isAvailable)}>
+                            {time}
+                            {!isAvailable && <span className="text-[10px] uppercase tracking-wider">(Busy)</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

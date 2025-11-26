@@ -23,8 +23,8 @@ export async function GET() {
       },
     });
 
-    const calendarData = response.data.calendars?.['jake@themindsetos.com'];
-    const busySlots = calendarData?.busy || [];
+    const busySlots =
+      response.data.calendars['jake@themindsetos.com'].busy || [];
 
     return NextResponse.json(busySlots);
   } catch (error) {
