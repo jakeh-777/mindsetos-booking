@@ -36,6 +36,7 @@ export async function POST(request) {
         start: { dateTime: body.startTime },
         end: { dateTime: body.endTime },
         attendees,
+        colorId: '11', // Tomato (red)
         conferenceData: {
           createRequest: {
             requestId: `mindset-${Date.now()}`, // Unique ID for each meeting
