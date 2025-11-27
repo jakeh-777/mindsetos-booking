@@ -30,7 +30,7 @@ export async function POST(request) {
       calendarId: 'primary',
       sendUpdates: 'all', // Now we can send invites!
       requestBody: {
-        summary: `MindsetOS Session: ${body.name}`,
+        summary: `MindsetOS & ${body.name}`,
         description: `Notes: ${body.notes || 'None'}`,
         start: { dateTime: body.startTime },
         end: { dateTime: body.endTime },
