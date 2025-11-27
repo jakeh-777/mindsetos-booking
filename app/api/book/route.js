@@ -28,13 +28,20 @@ export async function POST(request) {
 
     await calendar.events.insert({
       calendarId: 'primary',
-      sendUpdates: 'all', // Now we can send invites!
+      sendUpdates: 'all',
+      conferenceDataVersion: 1, // Enable Google Meet creation
       requestBody: {
         summary: `MindsetOS & ${body.name}`,
         description: `Notes: ${body.notes || 'None'}`,
         start: { dateTime: body.startTime },
         end: { dateTime: body.endTime },
         attendees,
+        conferenceData: {
+          createRequest: {
+            requestId: `mindset-${Date.now()}`, // Unique ID for each meeting
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
+          },
+        },
       },
     });
 
