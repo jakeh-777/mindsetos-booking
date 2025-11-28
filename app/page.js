@@ -263,6 +263,7 @@ export default function BookingApp() {
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-gray-600"><Clock size={18} className="text-gray-400" /><span>30 mins</span></div>
               <div className="flex items-center gap-3 text-gray-600"><Video size={18} className="text-gray-400" /><span>Google Meets</span></div>
+              <div className="flex items-center gap-3 text-gray-600"><CalendarIcon size={18} className="text-gray-400" /><span>Time Zone: GMT</span></div>
             </div>
           </div>
           <div className="mt-auto pt-8 border-t border-gray-200">
