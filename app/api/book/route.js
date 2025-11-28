@@ -33,8 +33,8 @@ export async function POST(request) {
       requestBody: {
         summary: `MindsetOS & ${body.name}`,
         description: `Notes: ${body.notes || 'None'}`,
-        start: { dateTime: body.startTime },
-        end: { dateTime: body.endTime },
+        start: { dateTime: body.startTime, timeZone: 'Europe/London' },
+        end: { dateTime: body.endTime, timeZone: 'Europe/London' },
         attendees,
         colorId: '11', // Tomato (red)
         conferenceData: {
