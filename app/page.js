@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, 
-  Video, User, Mail, ArrowRight, ShieldCheck, CheckCircle2, Users, Plus, X 
+  Video, User, Mail, ArrowRight, ShieldCheck, CheckCircle2, Users, Plus, X, Globe
 } from 'lucide-react';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -36,7 +36,23 @@ const generateTimeSlots = () => {
   return slots;
 };
 
-const BookingForm = ({ date, time, onConfirm, onBack, isSubmitting }) => {
+// Get user-friendly timezone name
+const getTimezoneDisplay = (tz) => {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'short'
+    });
+    const parts = formatter.formatToParts(now);
+    const tzName = parts.find(p => p.type === 'timeZoneName')?.value || tz;
+    return tzName;
+  } catch {
+    return tz;
+  }
+};
+
+const BookingForm = ({ date, time, onConfirm, onBack, isSubmitting, userTimezone }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [notes, setNotes] = useState('');
@@ -63,6 +79,7 @@ const BookingForm = ({ date, time, onConfirm, onBack, isSubmitting }) => {
         <h3 className="text-xl font-bold text-gray-900">Enter Details</h3>
         <p className="text-gray-500 text-sm mt-1">
           {date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} at {time}
+          <span className="text-xs ml-1">({getTimezoneDisplay(userTimezone)})</span>
         </p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4 flex-1 overflow-y-auto pr-2">
@@ -141,14 +158,35 @@ export default function BookingApp() {
   const [viewState, setViewState] = useState('calendar');
   const [busySlots, setBusySlots] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userTimezone, setUserTimezone] = useState('UTC');
 
-  // Fetch busy slots on load
+  // Detect user's timezone on mount
   useEffect(() => {
-    fetch('/api/availability')
-      .then(res => res.json())
-      .then(data => { if (Array.isArray(data)) setBusySlots(data); })
-      .catch(err => console.error("Failed to load availability", err));
+    try {
+      const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setUserTimezone(detectedTz || 'UTC');
+    } catch {
+      console.warn('Could not detect timezone, defaulting to UTC');
+      setUserTimezone('UTC');
+    }
   }, []);
+
+  // Fetch busy slots with user's timezone
+  useEffect(() => {
+    if (userTimezone) {
+      fetch('/api/availability?tz=' + encodeURIComponent(userTimezone))
+        .then(res => res.json())
+        .then(data => { 
+          if (data.slots && Array.isArray(data.slots)) {
+            setBusySlots(data.slots);
+          } else if (Array.isArray(data)) {
+            // Fallback for old API format
+            setBusySlots(data);
+          }
+        })
+        .catch(err => console.error("Failed to load availability", err));
+    }
+  }, [userTimezone]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -180,8 +218,13 @@ export default function BookingApp() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: details.name, email: details.email, notes: details.notes, guests: details.guests,
-          startTime: startDateObj.toISOString(), endTime: endDateObj.toISOString()
+          name: details.name, 
+          email: details.email, 
+          notes: details.notes, 
+          guests: details.guests,
+          startTime: startDateObj.toISOString(), 
+          endTime: endDateObj.toISOString(),
+          userTimezone: userTimezone // Pass user's timezone
         })
       });
       if (res.ok) { setViewState('success'); } else { alert("Something went wrong."); }
@@ -190,7 +233,7 @@ export default function BookingApp() {
   };
 
   const isSlotAvailable = (dateStr, timeStr) => {
-    // Create slot time in local timezone, then get its UTC timestamp
+    // Create slot time in user's local timezone
     const [year, month, day] = dateStr.split('-').map(Number);
     const [hour, minute] = timeStr.split(':').map(Number);
     const slotStart = new Date(year, month - 1, day, hour, minute, 0);
@@ -199,7 +242,6 @@ export default function BookingApp() {
     return !busySlots.some(busy => {
       const busyStart = new Date(busy.start);
       const busyEnd = new Date(busy.end);
-      // Compare timestamps (both converted to same reference)
       return (slotStart.getTime() < busyEnd.getTime() && slotEnd.getTime() > busyStart.getTime());
     });
   };
@@ -222,9 +264,13 @@ export default function BookingApp() {
                 {selectedDate && selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               </span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 mb-2">
               <Clock size={18} className="text-blue-600" />
               <span className="font-medium text-gray-700">{selectedTime}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Globe size={18} className="text-blue-600" />
+              <span className="font-medium text-gray-700">{getTimezoneDisplay(userTimezone)}</span>
             </div>
           </div>
           <button onClick={() => { setViewState('calendar'); setSelectedDate(null); }}
@@ -263,7 +309,6 @@ export default function BookingApp() {
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-gray-600"><Clock size={18} className="text-gray-400" /><span>30 mins</span></div>
               <div className="flex items-center gap-3 text-gray-600"><Video size={18} className="text-gray-400" /><span>Google Meets</span></div>
-              <div className="flex items-center gap-3 text-gray-600"><CalendarIcon size={18} className="text-gray-400" /><span>Time Zone: GMT</span></div>
             </div>
           </div>
           <div className="mt-auto pt-8 border-t border-gray-200">
@@ -277,7 +322,7 @@ export default function BookingApp() {
         <div className="flex-1 p-8 overflow-y-auto">
           {viewState === 'form' ? (
             <BookingForm date={selectedDate} time={selectedTime} onConfirm={handleBookingConfirm}
-              onBack={() => setViewState('calendar')} isSubmitting={isSubmitting} />
+              onBack={() => setViewState('calendar')} isSubmitting={isSubmitting} userTimezone={userTimezone} />
           ) : (
             <div className="flex flex-col md:flex-row h-full gap-8">
               <div className={selectedDate ? "flex-1 md:w-3/5" : "flex-1 w-full"}>
@@ -310,10 +355,15 @@ export default function BookingApp() {
               </div>
               {selectedDate && (
                 <div className="w-full md:w-64 border-l border-gray-100 pl-0 md:pl-8 mt-6 md:mt-0">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">
                     {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                   </h3>
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                  {/* Timezone indicator */}
+                  <div className="flex items-center gap-2 mb-4 text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
+                    <Globe size={14} />
+                    <span>Times shown in {getTimezoneDisplay(userTimezone)}</span>
+                  </div>
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2">
                     {timeSlots.map(time => {
                       const isAvailable = isSlotAvailable(formatDateId(selectedDate), time);
                       return (
