@@ -54,7 +54,7 @@ export async function POST(request) {
       sendUpdates: 'all',
       conferenceDataVersion: 1,
       requestBody: {
-        summary: `MindsetOS & ${name}`,
+        summary: `MindsetOS: Jake & ${name}`,
         description: `Notes: ${notes || 'None'}`,
         start: { dateTime: eventStartTime, timeZone: OWNER_TIMEZONE },
         end: { dateTime: eventEndTime, timeZone: OWNER_TIMEZONE },
