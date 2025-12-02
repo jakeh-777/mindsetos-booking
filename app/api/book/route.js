@@ -1,9 +1,75 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
 import { DateTime } from 'luxon';
+import { Client } from '@notionhq/client';
 
 // Owner's timezone - all calendar events are created in this timezone
 const OWNER_TIMEZONE = 'Europe/London';
+
+// Initialize Notion client
+const notion = new Client({ auth: process.env.NOTION_TOKEN });
+const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
+
+// Sync contact to Notion CRM
+async function syncToNotion(bookingData) {
+  try {
+    const { name, email, notes, startTime } = bookingData;
+    
+    // Check if contact already exists by email
+    const existingContacts = await notion.databases.query({
+      database_id: NOTION_DATABASE_ID,
+      filter: {
+        property: 'Email',
+        email: {
+          equals: email,
+        },
+      },
+    });
+
+    const meetingDate = DateTime.fromISO(startTime).toISODate();
+    const meetingNote = `MindsetOS booking on ${meetingDate}. Notes: ${notes || 'None'}`;
+
+    if (existingContacts.results.length > 0) {
+      // Update existing contact - append to Personal Notes
+      const existingContact = existingContacts.results[0];
+      const currentNotes = existingContact.properties['Personal Notes']?.rich_text?.[0]?.plain_text || '';
+      const updatedNotes = currentNotes ? `${currentNotes}\n\n---\n${meetingNote}` : meetingNote;
+
+      await notion.pages.update({
+        page_id: existingContact.id,
+        properties: {
+          'Personal Notes': {
+            rich_text: [{ text: { content: updatedNotes.slice(0, 2000) } }], // Notion limit
+          },
+        },
+      });
+      console.log('Updated existing Notion contact:', email);
+    } else {
+      // Create new contact
+      await notion.pages.create({
+        parent: { database_id: NOTION_DATABASE_ID },
+        properties: {
+          'Contact Name': {
+            title: [{ text: { content: name } }],
+          },
+          'Email': {
+            email: email,
+          },
+          'Personal Notes': {
+            rich_text: [{ text: { content: meetingNote } }],
+          },
+          'Pilot Start Date': {
+            date: { start: meetingDate },
+          },
+        },
+      });
+      console.log('Created new Notion contact:', email);
+    }
+  } catch (error) {
+    console.error('Notion sync error:', error);
+    // Don't throw - we don't want Notion errors to break the booking
+  }
+}
 
 export async function POST(request) {
   try {
@@ -16,7 +82,6 @@ export async function POST(request) {
 
     if (userTimezone && userTimezone !== OWNER_TIMEZONE) {
       try {
-        // Parse the time in user's timezone and convert to owner's timezone
         eventStartTime = DateTime.fromISO(startTime, { zone: userTimezone })
           .setZone(OWNER_TIMEZONE)
           .toISO();
@@ -25,7 +90,6 @@ export async function POST(request) {
           .toISO();
       } catch (error) {
         console.error('Timezone conversion error:', error);
-        // Fall back to original times if conversion fails
       }
     }
 
@@ -49,6 +113,7 @@ export async function POST(request) {
       ...guests.map((g) => ({ email: g }))
     ];
 
+    // Create Google Calendar event
     await calendar.events.insert({
       calendarId: 'primary',
       sendUpdates: 'all',
@@ -59,7 +124,7 @@ export async function POST(request) {
         start: { dateTime: eventStartTime, timeZone: OWNER_TIMEZONE },
         end: { dateTime: eventEndTime, timeZone: OWNER_TIMEZONE },
         attendees,
-        colorId: '11', // Tomato (red)
+        colorId: '11',
         conferenceData: {
           createRequest: {
             requestId: `mindset-${Date.now()}`,
@@ -68,6 +133,9 @@ export async function POST(request) {
         },
       },
     });
+
+    // Sync to Notion CRM (non-blocking)
+    syncToNotion({ name, email, notes, startTime: eventStartTime });
 
     return NextResponse.json({ success: true });
 
